@@ -1,6 +1,6 @@
 {
   "name": "prerenderer-renderer-jsdom",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A renderer for @prerenderer/prerenderer , prerender-spa-plugin that uses JSDOM to prerender pages.",
   "keywords": [
     "jsdom",
@@ -13,6 +13,10 @@
     "webpack-plugin",
     "webpackplugin"
   ],
+  "bugs": {
+    "url": "https://github.com/bluelovers/prerenderer/issues"
+  },
+  "repository": "https://github.com/bluelovers/prerenderer/tree/master/renderers/renderer-jsdom",
   "license": "MIT",
   "author": "Joshua Bemenderfer <tribex10@gmail.com> (https://joshderf.com/)",
   "contributors": [
