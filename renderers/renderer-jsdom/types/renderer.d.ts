@@ -1,5 +1,6 @@
-import { JSDOM } from 'jsdom';
+import { JSDOM, VirtualConsole } from 'jsdom';
 import Bluebird from 'bluebird';
+import { Console } from 'debug-color2';
 export interface IJSDOMRendererOptions {
     /**
      * 0 (No limit)
@@ -39,16 +40,26 @@ export interface IJSDOMRendererOptions {
      * delay after renderAfterDocumentEvent renderAfterElementExists
      */
     renderAfterDelay?: number;
+    referrer?: string | URL;
+    disableLog?: boolean;
 }
 export declare type IRoutes = string[];
 export declare class JSDOMRenderer {
+    static DEFAULT_REFERRER: string;
+    static DEFAULT_INJECT_PROPERTY: string;
+    static ID: string;
     protected _rendererOptions: IJSDOMRendererOptions;
+    protected _virtualConsole: VirtualConsole;
+    protected consoleDebug: Console;
     constructor(rendererOptions: IJSDOMRendererOptions);
+    injectObject(): object;
     initialize(): Bluebird<void>;
+    getVirtualConsole(): VirtualConsole;
     renderRoutes(routes: IRoutes, Prerenderer: {
         getOptions(): IPrerendererOptions;
     }): Bluebird<IResult[]>;
     destroy(): void;
+    protected getPageContents(jsdom: JSDOM, options: IJSDOMRendererOptions, originalRoute: string): Bluebird<IResult>;
 }
 export interface IPostProcessContext {
     /**
@@ -99,5 +110,4 @@ export interface IResult {
     route: string;
     html: string;
 }
-export declare function getPageContents(jsdom: JSDOM, options: IJSDOMRendererOptions, originalRoute: string): Bluebird<IResult>;
 export default JSDOMRenderer;

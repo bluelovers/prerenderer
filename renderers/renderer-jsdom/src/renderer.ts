@@ -1,5 +1,6 @@
-import { DOMWindow, JSDOM } from 'jsdom'
+import { DOMWindow, JSDOM, VirtualConsole } from 'jsdom'
 import Bluebird from 'bluebird'
+import console, { Console } from 'debug-color2'
 
 export interface IJSDOMRendererOptions
 {
@@ -43,13 +44,31 @@ export interface IJSDOMRendererOptions
 	 * delay after renderAfterDocumentEvent renderAfterElementExists
 	 */
 	renderAfterDelay?: number,
+
+	referrer?: string | URL,
+
+	disableLog?: boolean,
 }
 
 export type IRoutes = string[];
 
 export class JSDOMRenderer
 {
+	static DEFAULT_REFERRER = new URL(`https://prerenderer-renderer-jsdom`).toString();
+	static DEFAULT_INJECT_PROPERTY = '__PRERENDER_INJECTED';
+	static ID = 'JSDOMRenderer';
+
 	protected _rendererOptions: IJSDOMRendererOptions = {};
+	protected _virtualConsole: VirtualConsole;
+
+	protected consoleDebug = new Console(console, {
+		label: true,
+		time: true,
+		labelFormatFn(data): string
+		{
+			return `[${JSDOMRenderer.ID}:${data.name.toUpperCase()}]`;
+		}
+	});
 
 	constructor(rendererOptions: IJSDOMRendererOptions)
 	{
@@ -59,8 +78,18 @@ export class JSDOMRenderer
 
 		if (this._rendererOptions.inject && !this._rendererOptions.injectProperty)
 		{
-			this._rendererOptions.injectProperty = '__PRERENDER_INJECTED'
+			this._rendererOptions.injectProperty = JSDOMRenderer.DEFAULT_INJECT_PROPERTY
 		}
+
+		if (this._rendererOptions.disableLog)
+		{
+			this.consoleDebug.enabled = false;
+		}
+	}
+
+	injectObject()
+	{
+		return this._rendererOptions.inject
 	}
 
 	initialize()
@@ -69,51 +98,181 @@ export class JSDOMRenderer
 		return Bluebird.resolve()
 	}
 
+	getVirtualConsole()
+	{
+		return this._virtualConsole || (this._virtualConsole = new VirtualConsole());
+	}
+
 	renderRoutes(routes: IRoutes, Prerenderer: {
 		getOptions(): IPrerendererOptions
 	}): Bluebird<IResult[]>
 	{
-		const rootOptions = Prerenderer.getOptions();
-
 		const self = this;
 
-		return Bluebird
-			.resolve(routes)
-			.bind(self)
-			.map((route) =>
-		{
-			return new Bluebird<IResult>(async (resolve, reject) =>
+		return Bluebird.resolve()
+			.then(() =>
 			{
-				const jsdom = await JSDOM.fromURL(`http://127.0.0.1:${rootOptions.server.port}${route}`, {
-					resources: 'usable',
-					runScripts: 'dangerously',
-				});
+				const rootOptions = Prerenderer.getOptions();
 
-				const { window } = jsdom;
+				const _rendererOptions = this._rendererOptions;
+				const virtualConsole = self.getVirtualConsole();
 
-				if (self._rendererOptions.inject)
-				{
-					window[self._rendererOptions.injectProperty] = self._rendererOptions.inject
-				}
+				virtualConsole.on('jsdomError', e => self.consoleDebug.error('jsdomError', e));
 
-				window.addEventListener('error', function (event)
-				{
-					console.error(event.error)
-				});
+				const referrer = _rendererOptions.referrer
+					? _rendererOptions.referrer.toString()
+					: JSDOMRenderer.DEFAULT_REFERRER;
 
-				return getPageContents(jsdom, self._rendererOptions, route)
+				return Bluebird
+					.resolve(routes)
+					.map(async (route) =>
+					{
+						self.consoleDebug.debug(`route:start`, route);
+
+						const jsdom = await JSDOM.fromURL(`http://127.0.0.1:${rootOptions.server.port}${route}`, {
+							resources: 'usable',
+							runScripts: 'dangerously',
+							// @ts-ignore
+							pretendToBeVisual: true,
+							includeNodeLocations: true,
+
+							referrer,
+
+							VirtualConsole: virtualConsole,
+						});
+
+						if (_rendererOptions.inject)
+						{
+							jsdom.window[_rendererOptions.injectProperty] = self.injectObject();
+						}
+
+						jsdom.window.addEventListener('error', function (event)
+						{
+							//self.consoleDebug.error(`window.error`, route, event.error)
+						});
+
+						return self.getPageContents(jsdom, _rendererOptions, route)
+							.tap(function ()
+							{
+								self.consoleDebug.debug(`route:end`, route);
+							})
+					})
+					.tapCatch(e =>
+					{
+						self.consoleDebug.error(`renderRoutes`, e.message)
+					})
+					;
 			})
-		})
-			.tapCatch(e =>
-			{
-				console.error(e)
+			.tap(() => {
+				self.consoleDebug.success(`renderRoutes:done`, routes, routes.length);
 			})
-		;
+			;
 	}
 
 	destroy()
 	{
 		// NOOP
+	}
+
+	protected getPageContents(jsdom: JSDOM, options: IJSDOMRendererOptions, originalRoute: string): Bluebird<IResult>
+	{
+		options = options || {};
+
+		const self = this;
+
+		return new Bluebird<IResult>(async (resolve, reject) =>
+		{
+			let int: number;
+
+			let _resolved: boolean;
+
+			async function captureDocument()
+			{
+				_resolved = true;
+				resetTimer();
+
+				return Bluebird
+					.delay(options.renderAfterDelay | 0)
+					.then(() =>
+					{
+						const result: IResult = {
+							originalRoute: originalRoute,
+							route: originalRoute,
+							html: jsdom.serialize(),
+						};
+
+						jsdom.window.close();
+						return result
+					})
+					.tap(() => {
+						self.consoleDebug.success(`captureDocument:done`, originalRoute);
+					})
+					.tapCatch(e =>
+					{
+						self.consoleDebug.error(`captureDocument`, e);
+					})
+					;
+			}
+
+			function resetTimer()
+			{
+				if (int != null)
+				{
+					clearInterval(int)
+					int = null;
+				}
+			}
+
+			function done()
+			{
+				resetTimer();
+
+				if (!_resolved)
+				{
+					resolve(captureDocument())
+				}
+			}
+
+			let bool: boolean;
+
+			// CAPTURE WHEN AN EVENT FIRES ON THE DOCUMENT
+			if (options.renderAfterDocumentEvent)
+			{
+				bool = true;
+
+				jsdom.window.document.addEventListener(options.renderAfterDocumentEvent, () => done())
+
+				// CAPTURE ONCE A SPECIFC ELEMENT EXISTS
+			}
+
+			if (options.renderAfterElementExists)
+			{
+				bool = true;
+
+				// @ts-ignore
+				int = setInterval(() =>
+				{
+					if (jsdom.window.document.querySelector(options.renderAfterElementExists)) done()
+				}, 100)
+
+				// CAPTURE AFTER A NUMBER OF MILLISECONDS
+			}
+
+			if (bool)
+			{
+				setTimeout(done, (options.renderAfterTimeMax | 0) || 30000)
+			}
+			else if (options.renderAfterTime)
+			{
+				setTimeout(done, options.renderAfterTime)
+
+				// DEFAULT: RUN IMMEDIATELY
+			}
+			else
+			{
+				done()
+			}
+		})
 	}
 }
 
@@ -173,81 +332,6 @@ export interface IResult
 	originalRoute: string,
 	route: string,
 	html: string,
-}
-
-export function getPageContents(jsdom: JSDOM, options: IJSDOMRendererOptions, originalRoute: string): Bluebird<IResult>
-{
-	options = options || {};
-
-	const { window } = jsdom;
-	const { document } = window;
-
-	return new Bluebird<IResult>((resolve, reject) =>
-	{
-		let int: number;
-
-		async function captureDocument()
-		{
-			if (options.renderAfterDelay > 0)
-			{
-				await Bluebird.delay(options.renderAfterDelay | 0)
-			}
-
-			const result: IResult = {
-				originalRoute: originalRoute,
-				route: originalRoute,
-				html: jsdom.serialize(),
-			};
-
-			if (int != null)
-			{
-				clearInterval(int)
-			}
-
-			window.close();
-			return result
-		}
-
-		let bool: boolean;
-
-		// CAPTURE WHEN AN EVENT FIRES ON THE DOCUMENT
-		if (options.renderAfterDocumentEvent)
-		{
-			bool = true;
-
-			document.addEventListener(options.renderAfterDocumentEvent, () => resolve(captureDocument()))
-
-			// CAPTURE ONCE A SPECIFC ELEMENT EXISTS
-		}
-
-		if (options.renderAfterElementExists)
-		{
-			bool = true;
-
-			// @ts-ignore
-			int = setInterval(() =>
-			{
-				if (document.querySelector(options.renderAfterElementExists)) resolve(captureDocument())
-			}, 100)
-
-			// CAPTURE AFTER A NUMBER OF MILLISECONDS
-		}
-
-		if (bool)
-		{
-			setTimeout(() => resolve(captureDocument()), (options.renderAfterTimeMax | 0) || 30000)
-		}
-		else if (options.renderAfterTime)
-		{
-			setTimeout(() => resolve(captureDocument()), options.renderAfterTime)
-
-			// DEFAULT: RUN IMMEDIATELY
-		}
-		else
-		{
-			resolve(captureDocument())
-		}
-	})
 }
 
 export default JSDOMRenderer
