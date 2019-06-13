@@ -1,6 +1,6 @@
 {
   "name": "prerenderer-renderer-jsdom",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "A renderer for @prerenderer/prerenderer , prerender-spa-plugin that uses JSDOM to prerender pages.",
   "keywords": [
     "jsdom",

@@ -118,7 +118,7 @@ export class JSDOMRenderer
 				const _rendererOptions = this._rendererOptions;
 				const virtualConsole = self.getVirtualConsole();
 
-				virtualConsole.on('jsdomError', e => self.consoleDebug.error('jsdomError', e));
+				//virtualConsole.on('jsdomError', e => self.consoleDebug.error('jsdomError', e));
 
 				const referrer = _rendererOptions.referrer
 					? _rendererOptions.referrer.toString()
@@ -140,6 +140,7 @@ export class JSDOMRenderer
 							referrer,
 
 							VirtualConsole: virtualConsole,
+							virtualConsole,
 						});
 
 						if (_rendererOptions.inject)
