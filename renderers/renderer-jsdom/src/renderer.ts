@@ -108,6 +108,7 @@ export class JSDOMRenderer
 	}): Bluebird<IResult[]>
 	{
 		const self = this;
+		const startTime = Date.now();
 
 		return Bluebird.resolve()
 			.then(() =>
@@ -166,6 +167,9 @@ export class JSDOMRenderer
 			.tap(() => {
 				self.consoleDebug.success(`renderRoutes:done`, routes, routes.length);
 			})
+			.finally(() => {
+				self.consoleDebug.debug(`renderRoutes:end`, routes, `used`, (Date.now() - startTime) / 1000 , 'sec');
+			})
 			;
 	}
 
@@ -182,6 +186,8 @@ export class JSDOMRenderer
 
 		return new Bluebird<IResult>(async (resolve, reject) =>
 		{
+			const startTime = Date.now();
+
 			let int: number;
 
 			let _resolved: boolean;
@@ -210,6 +216,9 @@ export class JSDOMRenderer
 					.tapCatch(e =>
 					{
 						self.consoleDebug.error(`captureDocument`, e);
+					})
+					.finally(() => {
+						self.consoleDebug.debug(`captureDocument:end`, originalRoute, `used`, (Date.now() - startTime) / 1000 , 'sec');
 					})
 					;
 			}
