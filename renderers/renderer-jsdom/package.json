@@ -1,6 +1,6 @@
 {
   "name": "prerenderer-renderer-jsdom",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "A renderer for @prerenderer/prerenderer , prerender-spa-plugin that uses JSDOM to prerender pages.",
   "keywords": [
     "jsdom",
@@ -44,7 +44,7 @@
     "jsdom": "^15.1.1"
   },
   "devDependencies": {
-    "@bluelovers/tsconfig": "^1.0.6",
+    "@bluelovers/tsconfig": "^1.0.8",
     "@types/bluebird": "*",
     "@types/jsdom": "*"
   },
